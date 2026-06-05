@@ -231,3 +231,6 @@ scripts/test_data
 CLAUDE.md
 .claude/
 
+secure_checkpoints/
+outputs/
+training_logs/

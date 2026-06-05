@@ -33,6 +33,7 @@ COPY scripts/grpo_requirements.txt /workspace/scripts/grpo_requirements.txt
 RUN python -m venv /workspace/.grpo_env
 RUN bash -c "source /workspace/.grpo_env/bin/activate && \
     pip install uv && \
+    pip install setuptools wheel && \
     uv pip install --no-build-isolation -r /workspace/scripts/grpo_requirements.txt && \
     uv pip install --no-build-isolation flash-attn==2.8.3 && \
     git clone --depth 1 https://github.com/WooooDyy/AgentGym && \

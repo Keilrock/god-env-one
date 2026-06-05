@@ -10,3 +10,4 @@ aiohttp
 toml
 redis==7.0.1
 bitsandbytes==0.45.4
+deepspeed==0.15.4
