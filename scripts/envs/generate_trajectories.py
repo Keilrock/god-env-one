@@ -4,7 +4,7 @@ Generate game trajectories against env servers and save as an HF DatasetDict
 
 Analogous to tokenize_instruct.py but for environment SFT tasks.
 
-Run from /workspace/scripts/:
+Run from /opt/grpo/scripts/:
   python -m envs.generate_trajectories --environment_name liars_dice \
       --output_path /path/to/dataset --num_games 100000
 

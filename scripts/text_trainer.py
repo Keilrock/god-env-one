@@ -363,7 +363,7 @@ def main():
     if not os.path.exists(submission_dir):
         os.makedirs(submission_dir, exist_ok=True)
 
-    output_dir = f"/workspace/scripts/soutputs/{args.task_id}"
+    output_dir = f"/opt/grpo/scripts/soutputs/{args.task_id}"
     os.makedirs(output_dir, exist_ok=True)
 
     end_time = datetime.now(timezone.utc) + timedelta(

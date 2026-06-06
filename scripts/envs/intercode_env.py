@@ -39,6 +39,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
@@ -83,6 +84,79 @@ PATHS_PER_FS: dict[int, tuple[str, ...]] = {
     3: ("/workspace", "/backup"),
     4: (),  # filesystem-agnostic
 }
+
+
+# ---------------------------------------------------------------------------
+# Managed-path safety guardrail
+#
+# _restore_fs() rmtree's every managed path on every reset(). If the training
+# image ever co-locates its venv / cwd / code UNDER a managed path (e.g. the
+# trainer venv at /workspace/.grpo_env vs fs_3's managed /workspace), reset()
+# would silently delete the live runtime — `import x` stays cached but any new
+# lazy import (e.g. sklearn.feature_extraction in the reward) fails, degrading
+# rewards silently. We refuse to run in that configuration and FAIL LOUD.
+# ---------------------------------------------------------------------------
+
+def _protected_runtime_dirs() -> set[str]:
+    """Real paths that must never live inside an InterCode managed path: the
+    running Python runtime/venv, the cwd, and this package's own code."""
+    candidates = [
+        sys.prefix,
+        sys.base_prefix,
+        os.path.dirname(sys.executable or ""),
+        os.getcwd(),
+        os.path.dirname(os.path.abspath(__file__)),
+    ]
+    out: set[str] = set()
+    for c in candidates:
+        if not c:
+            continue
+        try:
+            out.add(os.path.realpath(c))
+        except OSError:
+            pass
+    return out
+
+
+def _conflicting_protected_dirs(path: str) -> list[str]:
+    """Protected dirs that are the managed path itself or nested inside it.
+    Pure path math — does not touch the filesystem, so it works as a pre-flight
+    before the managed path is ever created."""
+    path_real = os.path.realpath(path)
+    prefix = path_real.rstrip("/") + os.sep
+    return [
+        prot for prot in _protected_runtime_dirs()
+        if prot == path_real or prot.startswith(prefix)
+    ]
+
+
+def _assert_path_safe_to_wipe(path: str) -> None:
+    conflicts = _conflicting_protected_dirs(path)
+    if conflicts:
+        raise RuntimeError(
+            f"refusing to rmtree managed path {path!r}: it contains protected "
+            f"runtime location(s) {conflicts}. The InterCode managed paths "
+            f"{ALL_MANAGED_PATHS} must not overlap the training venv/cwd/code "
+            f"(relocate them off this path — see fix A)."
+        )
+
+
+def _assert_no_managed_path_conflicts() -> None:
+    """Startup pre-flight: validate ALL managed paths up front so a bad image
+    layout fails before episode 1 (NOT inside _run_episode's per-episode
+    try/except, which would otherwise turn this into a silent episode skip)."""
+    conflicts = [
+        (mp, prot)
+        for mp in ALL_MANAGED_PATHS
+        for prot in _conflicting_protected_dirs(mp)
+    ]
+    if conflicts:
+        details = "; ".join(f"{mp} contains {prot}" for mp, prot in conflicts)
+        raise RuntimeError(
+            "InterCode managed paths overlap the live runtime — reset() would "
+            f"rmtree a protected location: {details}. The training venv/cwd/code "
+            f"must live OUTSIDE {ALL_MANAGED_PATHS} (relocate them; see fix A)."
+        )
 
 _INTERCODE_RANGE_START = GAMES_TO_TASK_ID_RANGE["intercode"][0]
 
@@ -208,6 +282,7 @@ class LocalBashEnv:
         # which has no managed paths of its own.
         for p in ALL_MANAGED_PATHS:
             if os.path.exists(p):
+                _assert_path_safe_to_wipe(p)  # never rmtree the live venv/cwd/code
                 shutil.rmtree(p, ignore_errors=True)
         if not self.managed_paths or not self.snapshot_tar.exists():
             return
@@ -597,6 +672,7 @@ def _ensure_initialized(trainer) -> None:
     if _state.get("initialized"):
         return
 
+    _assert_no_managed_path_conflicts()  # fail loud before episode 1 if layout is unsafe
     assets = load_intercode_assets()
     curriculum = _curriculum_factory(trainer.args)
     rank = int(os.environ.get("LOCAL_RANK", "0"))
