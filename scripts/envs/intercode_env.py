@@ -154,6 +154,17 @@ def load_intercode_assets(
 
     data = _load_data(data_path)
     ranges = _compute_fs_ranges(data)
+    # Guard against an empty/misbuilt dataset. With total==0 the prompt->task fold
+    # in _map_prompt_to_task does `% total` (ZeroDivisionError, caught per-episode →
+    # every intercode episode silently skips). That makes training *look* successful
+    # while learning nothing. Fail loud here instead.
+    total = ranges[-1][2] if ranges else 0
+    if total <= 0:
+        per_fs = {fs: len(data[fs]) for fs in (1, 2, 3, 4)}
+        raise RuntimeError(
+            f"intercode assets empty — check fs/data mount "
+            f"(data_path={data_path}, per_fs_counts={per_fs}, total={total})"
+        )
     return InterCodeAssets(data=data, ranges=ranges, snapshot_root=snapshot_path)
 
 
