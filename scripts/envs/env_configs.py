@@ -69,6 +69,12 @@ from envs.liar_dice_opponent_modeling import (
     rollout_reward_func                                        as _liar_opp_reward,
     _curriculum_factory                                        as _liar_opp_curriculum,
 )
+from envs.intercode_env import (
+    rollout_full_prompt_and_completion_parallelized_curriculum as _intercode_rollout_full,
+    rollout_last_prompt_and_completion_parallelized_curriculum as _intercode_rollout_last,
+    rollout_reward_func                                        as _intercode_reward,
+    _curriculum_factory                                        as _intercode_curriculum,
+)
 
 
 @dataclass
@@ -239,6 +245,20 @@ _REGISTRY: dict[str, EnvTrainingConfig] = {
             "2_4_b": SizeHyperparams(per_device_train_batch_size=2, gradient_accumulation_steps=8, num_generations=8, vllm_gpu_memory_utilization=0.3,  beta=0.01),
             "6_9_b": SizeHyperparams(per_device_train_batch_size=2, gradient_accumulation_steps=8, num_generations=8, vllm_gpu_memory_utilization=0.35, beta=0.01),
         }),
+    ),
+    "intercode": EnvTrainingConfig(
+        # InterCode-Bash NL2Bash. In-process LocalBashEnv (no env-server); reward is a
+        # verbatim port of eval_intercode._get_reward (terminal 3-component continuous).
+        # max_completion_length=512 in ALL modes — ReAct bash turns need room (matches
+        # eval's DEFAULT_MAX_TOKENS_PER_CALL); the default 16 would truncate every action.
+        # No per_size override → falls back to DEFAULT_HYPERPARAMS (beta 0.04 @ 1_2_b).
+        rollout_full=_intercode_rollout_full,
+        rollout_last=_intercode_rollout_last,
+        reward_func=_intercode_reward,
+        curriculum_factory=_intercode_curriculum,
+        reasoning=ModeConfig(initial_max_turn=4, rollouts_per_stage=512, num_generations=4, temperature=1.0, top_k=0, max_completion_length=512),
+        no_mask=ModeConfig(initial_max_turn=4, rollouts_per_stage=512, num_generations=4, temperature=1.0, top_k=0, max_completion_length=512),
+        full_prompt=ModeConfig(initial_max_turn=4, rollouts_per_stage=512, num_generations=4, temperature=1.0, top_k=0, max_completion_length=512),
     ),
     "alfworld": EnvTrainingConfig(
         rollout_full=_alf_rollout_full,

@@ -18,6 +18,7 @@ GAMES_TO_TASK_ID_RANGE: dict[str, tuple[int, int]] = {
     "backgammon":  (500000000, 599_999_999),
     "hex":         (600000000, 699_999_999),
     "clobber":     (700000000, 799_999_999),
+    "intercode":   (800000000, 899_999_999),
 }
 
 
